@@ -139,6 +139,7 @@ def parse_segment(path, chain_id, lo, hi):
 def parse_ssbonds(path, keep_chains):
     """抽取指定链之间的二硫键（含 SG 硫原子坐标）。"""
     cys = {}
+    carbons = {}
     bonds = []
     with open(path, "r", errors="ignore") as fh:
         for line in fh:
@@ -146,7 +147,7 @@ def parse_ssbonds(path, keep_chains):
             if rec == "ATOM":
                 if line[21] not in keep_chains:
                     continue
-                if line[12:16].strip() != "SG":
+                if line[12:16].strip() not in ("SG", "CB") or line[17:20] != "CYS":
                     continue
                 if line[16] not in (" ", "A"):
                     continue
@@ -154,7 +155,8 @@ def parse_ssbonds(path, keep_chains):
                     seq = int(line[22:26])
                 except ValueError:
                     continue
-                cys[(line[21], seq)] = [round(float(line[30:38]), 3),
+                target = cys if line[12:16].strip() == "SG" else carbons
+                target[(line[21], seq)] = [round(float(line[30:38]), 3),
                                         round(float(line[38:46]), 3),
                                         round(float(line[46:54]), 3)]
             elif rec == "SSBOND":
@@ -171,7 +173,8 @@ def parse_ssbonds(path, keep_chains):
             continue
         d = sum((pa[i] - pb[i]) ** 2 for i in range(3)) ** 0.5
         out.append({"a": b["a"][0] + str(b["a"][1]), "b": b["b"][0] + str(b["b"][1]),
-                    "ca": pa, "cb": pb, "d": round(d, 2)})
+                    "ca": pa, "cb": pb, "betaA": carbons.get(tuple(b["a"])),
+                    "betaB": carbons.get(tuple(b["b"])), "d": round(d, 2)})
     return cys, out
 
 

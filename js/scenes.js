@@ -200,10 +200,6 @@
         [full.Ns[1].clone(), full.CAs[1].clone(), full.Cs[1].clone()]
       );
       aaB.atoms.forEach((a) => { a.pos.applyQuaternion(fit.q).add(fit.t); });
-      aaB.Ns.forEach((p) => p.applyQuaternion(fit.q).add(fit.t));
-      aaB.CAs.forEach((p) => p.applyQuaternion(fit.q).add(fit.t));
-      aaB.Cs.forEach((p) => p.applyQuaternion(fit.q).add(fit.t));
-      aaB.Os.forEach((p) => p.applyQuaternion(fit.q).add(fit.t));
 
       // 重排 B 的氨基两个 H：一个成为成键后的酰胺 H（理想位置），另一个准备脱离
       const NB = aaB.Ns[0], OA = full.Os[0], CA_ = full.Cs[0];
@@ -215,10 +211,6 @@
       const ctr = MOL.centerPoints(all);
       [aaA, aaB].forEach((d) => {
         d.atoms.forEach((a) => a.pos.sub(ctr));
-        d.Ns.forEach((p) => p.sub(ctr));
-        d.CAs.forEach((p) => p.sub(ctr));
-        d.Cs.forEach((p) => p.sub(ctr));
-        d.Os.forEach((p) => p.sub(ctr));
       });
       const N1 = aaB.Ns[0].clone(), C0 = aaA.Cs[0].clone();
       const axis = N1.clone().sub(C0).normalize();
@@ -233,6 +225,7 @@
       const molA = MOL.renderMol(aaA, { scale: 1.3 });
       const molB = MOL.renderMol(aaB, { scale: 1.3 });
       g.add(molA.root); g.add(molB.root);
+      g.attach(molB.atomMeshes[iHb]);
 
       // 隐藏静态键，改用动态键跟随
       const hideBond = (data, ia, ib) => {
@@ -314,21 +307,22 @@
         const float = smoothstep(0.60, 1.0, t) * 3.4;
         mOXT.position.copy(home.OXT).lerp(wPos, lv).addScaledVector(upV, float);
         mHXT.position.copy(home.HXT).lerp(wPos.clone().add(hA), lv).addScaledVector(upV, float);
-        mHb.position.copy(home.Hb).lerp(wPos.clone().add(hBv), lv).addScaledVector(upV, float);
+        mHb.position.copy(home.Hb).addScaledVector(axis, disp)
+          .lerp(wPos.clone().add(hBv), lv).addScaledVector(upV, float);
 
         const fade = 1 - smoothstep(0.78, 1.0, t);
         waterMatO.opacity = fade; waterMatH.opacity = fade; waterBondMat.opacity = fade;
 
         // 断键
         const broken = t > 0.30;
-        dbCO.mesh.visible = !broken;
-        dbNH.mesh.visible = !broken;
-        dbOH.mesh.visible = true;
-        dbW.mesh.visible = t > 0.50;
+        dbCO.visible = !broken;
+        dbNH.visible = !broken;
+        dbOH.visible = true;
+        dbW.visible = t > 0.50;
 
         // 肽键
         const pg = smoothstep(0.70, 0.82, t);
-        dbPep.mesh.visible = pg > 0.01;
+        dbPep.visible = pg > 0.01;
         dbPep.radius = 0.17 * pg;
 
         // 光晕
@@ -815,7 +809,6 @@
       sepDir.normalize();
 
       // 二硫键：硫原子随各自肽链移动，中间的键单独一组
-      const SG = new T.Group(); g.add(SG);
       const bondG = new T.Group(); g.add(bondG);
       const SSCOL = 0xf2c14e, SSCOL2 = 0xe0a92c;
       const info = [];
@@ -827,10 +820,22 @@
         const gj = P.chains.findIndex((c) => c.id === b.b[0]);
         const gp = carts[gi] ? carts[gi].group : g;
         const gq = carts[gj] ? carts[gj].group : g;
-        MOL.addSphere(gp, 'S', pa, 0.46, { color: SSCOL });
-        MOL.addSphere(gq, 'S', pb, 0.46, { color: SSCOL });
-        const cyl = MOL.cylBetween(bondG, pa, pb, inter ? 0.17 : 0.14, inter ? SSCOL : SSCOL2);
-        info.push({ pa: pa.clone(), pb: pb.clone(), inter, name: b.a + '–' + b.b, d: b.d, cyl });
+        const sa = MOL.addSphere(gp, 'S', pa, 0.46, { color: SSCOL });
+        const sb = MOL.addSphere(gq, 'S', pb, 0.46, { color: SSCOL });
+        // 把硫原子接回对应残基的 CA，避免悬浮在主链之外。
+        const sideLinks = [];
+        [[b.a, pa, gp, b.betaA], [b.b, pb, gq, b.betaB]].forEach(([id, sulfur, parent, beta]) => {
+          const chain = P.chains.find((c) => c.id === id[0]);
+          const idx = Number(id.slice(1)) - chain.first;
+          if (idx >= 0 && beta) {
+            const cb = new V3(...beta).sub(ctr);
+            sideLinks.push(MOL.cylBetween(parent, new V3(...chain.xyz[idx]).sub(ctr), cb, 0.12, SSCOL));
+            sideLinks.push(MOL.cylBetween(parent, cb, sulfur, 0.12, SSCOL));
+          }
+        });
+        const link = MOL.dynamicBond(bondG, sa, sb, inter ? 0.17 : 0.14, inter ? SSCOL : SSCOL2);
+        info.push({ pa: pa.clone(), pb: pb.clone(), gi, gj, sa, sb, sideLinks, inter,
+          name: b.a + '–' + b.b, d: b.d, link });
       });
 
       const L = [];
@@ -859,8 +864,8 @@
           '<div class="kv"><span>肽链</span><b>2 条（A 链 21 + B 链 30）</b></div>' +
           '<div class="kv"><span>氨基酸总数</span><b>51</b></div>' +
           '<div class="kv"><span>肽键数</span><b>51 − 2 = 49</b></div>' +
-          '<div class="kv"><span>二硫键</span><b>' + (sep > 0.5 ? '0（已断裂）' : '3 个（链间 2 + 链内 1）') + '</b></div>' +
-          '<div class="kv"><span>状态</span><b>' + (sep > 0.5 ? '<span style="color:#d0402c">空间结构破坏 · 功能丧失</span>' : '空间结构稳定 · 功能正常') + '</b></div>' +
+          '<div class="kv"><span>二硫键</span><b>' + (sep > 0 ? '0（已断裂）' : '3 个（链间 2 + 链内 1）') + '</b></div>' +
+          '<div class="kv"><span>状态</span><b>' + (sep > 0 ? '<span style="color:#d0402c">空间结构破坏 · 功能丧失</span>' : '空间结构稳定 · 功能正常') + '</b></div>' +
           '</div><div class="note">黄色球 = 半胱氨酸 R 基上的硫原子（S），黄色棒 = 二硫键 —S—S—</div>');
       }
       function apply(v) {
@@ -868,14 +873,20 @@
         const e = sep * sep * (3 - 2 * sep);
         carts[1].group.position.copy(sepDir).multiplyScalar(e * 16);
         carts[0].group.position.copy(sepDir).multiplyScalar(-e * 3);
-        // 键：只保留链内的那根，链间的随距离拉长后隐藏
+        // 所有二硫键同步断开；显示开关只改变可见性。
+        g.updateMatrixWorld(true);
         info.forEach((b, i) => {
-          if (b.inter) b.cyl.visible = showSS && e < 0.06;
-          else b.cyl.visible = showSS;
+          b.link.visible = showSS && sep === 0;
+          b.link.update();
+          b.sa.visible = b.sb.visible = showSS;
+          b.sideLinks.forEach(mesh => { mesh.visible = showSS; });
+          ssLabels[i].show(showSS && sep === 0);
+          ssLabels[i].pos.copy(b.pa).add(carts[b.gi].group.position)
+            .add(b.pb).add(carts[b.gj].group.position).multiplyScalar(0.5);
         });
-        ssLabels.forEach((l, i) => l.show(showSS && (info[i].inter ? e < 0.06 : true)));
-        labBreak.show(showSS === false || e > 0.5);
-        labB.pos.copy(centers[1]).add(new V3(0, -4.6, 0)).addScaledVector(sepDir, e * 16);
+        labBreak.show(sep > 0);
+        L[0].pos.copy(centers[0]).add(new V3(0, 4.4, 0)).add(carts[0].group.position);
+        labB.pos.copy(centers[1]).add(new V3(0, -4.6, 0)).add(carts[1].group.position);
         stat();
       }
       apply(0);
