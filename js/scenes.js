@@ -776,15 +776,16 @@
   const s9 = {
     id: 'disulfide',
     nav: '⑧ 二硫键',
-    title: '二硫键 —— 把空间结构"锁"住',
+    title: '二硫键 —— 链内与链间',
     lead: '两个半胱氨酸（Cys）R 基上的巯基（—SH）各脱去一个 H，形成二硫键（—S—S—），把肽链的不同部位连接固定，稳定蛋白质的空间结构。',
     points: [
       '二硫键形成于两个<b>半胱氨酸</b>的 R 基（—CH₂SH）之间，写作 <b>—S—S—</b>，形成时脱去 2 个 H。',
-      '<b>胰岛素</b>由 <b>2 条肽链</b>组成：A 链 21 个氨基酸、B 链 30 个氨基酸，两条链之间靠 <b>2 个链间二硫键</b>连接（A7–B7、A20–B19）。',
-      'A 链内部还有 <b>1 个链内二硫键</b>（A6–A11），共 3 个二硫键。',
+      '<b>链内二硫键</b>：连接同一条肽链的两个部位，帮助固定这条链的折叠形状。',
+      '<b>链间二硫键</b>：连接不同肽链，帮助把两条链固定在一起。',
+      '图中仅选取<b>一个链内、一个链间</b>二硫键作示例；真实胰岛素共有 3 个二硫键。',
       '二硫键是维持<b>空间结构</b>的重要作用力；二硫键被破坏 → 空间结构改变 → <b>功能丧失</b>。',
     ],
-    exam: '① 二硫键的形成部位与写法（—S—S—，两个 Cys 的 R 基之间）；② 胰岛素两条链：肽键数 = 氨基酸数 − 肽链数 = 51 − 2 = 49；③ 破坏二硫键只破坏空间结构，肽键未断裂，仍能与双缩脲试剂产生紫色反应。',
+    exam: '看两端是否属于同一条肽链：同一条链是链内，不同链是链间。二硫键连接 R 基；断开二硫键不等于断开主链上的肽键。',
     build(ctx) {
       const g = new T.Group(); ctx.root.add(g);
       const P = global.PROTEIN_PDB.insulin;
@@ -812,7 +813,10 @@
       const bondG = new T.Group(); g.add(bondG);
       const SSCOL = 0xf2c14e, SSCOL2 = 0xe0a92c;
       const info = [];
-      P.ssbonds.forEach((b) => {
+      // 只选取 A6–A11（链内）与 A7–B7（链间），突出两类连接。
+      const examples = P.ssbonds.filter(b =>
+        (b.a === 'A6' && b.b === 'A11') || (b.a === 'A7' && b.b === 'B7'));
+      examples.forEach((b) => {
         const pa = new V3(b.ca[0], b.ca[1], b.ca[2]).sub(ctr);
         const pb = new V3(b.cb[0], b.cb[1], b.cb[2]).sub(ctr);
         const inter = b.a[0] !== b.b[0];
@@ -839,14 +843,14 @@
       });
 
       const L = [];
-      L.push(ctx.lab('<b>A 链</b>（21 个氨基酸）', centers[0].clone().add(new V3(0, 4.4, 0)), 'c-orange'));
+      L.push(ctx.lab('<b>A 链</b>（21 个氨基酸）', centers[0].clone().add(new V3(-5, 7, 0)), 'c-orange'));
       const labB = ctx.lab('<b>B 链</b>（30 个氨基酸）', centers[1].clone().add(new V3(0, -4.6, 0)), 'c-blue');
       L.push(labB);
       const ssLabels = [];
       info.forEach((b) => {
         const mid = b.pa.clone().add(b.pb).multiplyScalar(0.5);
         const t = '<b>' + (b.inter ? '链间' : '链内') + '二硫键</b> —S—S—<br><span class="s">' +
-          b.name.replace('A', 'A 链 ').replace('B', 'B 链 ') + ' · ' + b.d + ' Å</span>';
+          (b.inter ? '连接 A 链与 B 链' : '连接 A 链上的两个部位') + '</span>';
         ssLabels.push(ctx.lab(t, mid, b.inter ? 'c-gold' : 'c-purple'));
       });
       L.push.apply(L, ssLabels);
@@ -860,13 +864,11 @@
       let sep = 0, target = 0, showSS = true;
       function stat() {
         ctx.stat('<div class="kvlist">' +
-          '<div class="kv"><span>实例</span><b>胰岛素（PDB 4INS）</b></div>' +
+          '<div class="kv"><span>实例</span><b>胰岛素 · 局部选例</b></div>' +
           '<div class="kv"><span>肽链</span><b>2 条（A 链 21 + B 链 30）</b></div>' +
-          '<div class="kv"><span>氨基酸总数</span><b>51</b></div>' +
-          '<div class="kv"><span>肽键数</span><b>51 − 2 = 49</b></div>' +
-          '<div class="kv"><span>二硫键</span><b>' + (sep > 0 ? '0（已断裂）' : '3 个（链间 2 + 链内 1）') + '</b></div>' +
+          '<div class="kv"><span>图中二硫键</span><b>' + (sep > 0 ? '0（已断裂）' : '2 个（链内 1 + 链间 1）') + '</b></div>' +
           '<div class="kv"><span>状态</span><b>' + (sep > 0 ? '<span style="color:#d0402c">空间结构破坏 · 功能丧失</span>' : '空间结构稳定 · 功能正常') + '</b></div>' +
-          '</div><div class="note">黄色球 = 半胱氨酸 R 基上的硫原子（S），黄色棒 = 二硫键 —S—S—</div>');
+          '</div><div class="note">黄色球 = 硫原子（S）；黄色棒连接两个硫原子形成 —S—S—。图中仅显示两处示例，真实胰岛素共有 3 个二硫键。</div>');
       }
       function apply(v) {
         sep = Math.min(1, Math.max(0, v));
@@ -882,10 +884,11 @@
           b.sideLinks.forEach(mesh => { mesh.visible = showSS; });
           ssLabels[i].show(showSS && sep === 0);
           ssLabels[i].pos.copy(b.pa).add(carts[b.gi].group.position)
-            .add(b.pb).add(carts[b.gj].group.position).multiplyScalar(0.5);
+            .add(b.pb).add(carts[b.gj].group.position).multiplyScalar(0.5)
+            .add(new V3(b.inter ? 5 : -5, b.inter ? -2 : 2, 0));
         });
         labBreak.show(sep > 0);
-        L[0].pos.copy(centers[0]).add(new V3(0, 4.4, 0)).add(carts[0].group.position);
+        L[0].pos.copy(centers[0]).add(new V3(-5, 7, 0)).add(carts[0].group.position);
         labB.pos.copy(centers[1]).add(new V3(0, -4.6, 0)).add(carts[1].group.position);
         stat();
       }
