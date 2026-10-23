@@ -799,7 +799,8 @@
         const pts = chainPoints(ch);
         pts.forEach((p) => p.sub(ctr));
         ptsList.push(pts);
-        const cart = new MOL.Cartoon(pts, { color: CH_COL[i], radius: 0.82 });
+        const cart = new MOL.Cartoon(pts, { color: CH_COL[i], radius: 0.58, opacity: 0.38 });
+        cart.material.depthWrite = false;
         carts.push(cart);
         g.add(cart.group);
         centers.push(MOL.centerPoints(pts));
@@ -824,17 +825,27 @@
         const gj = P.chains.findIndex((c) => c.id === b.b[0]);
         const gp = carts[gi] ? carts[gi].group : g;
         const gq = carts[gj] ? carts[gj].group : g;
-        const sa = MOL.addSphere(gp, 'S', pa, 0.46, { color: SSCOL });
-        const sb = MOL.addSphere(gq, 'S', pb, 0.46, { color: SSCOL });
+        const sa = MOL.addSphere(gp, 'S', pa, 0.56, { color: SSCOL });
+        const sb = MOL.addSphere(gq, 'S', pb, 0.56, { color: SSCOL });
         // 把硫原子接回对应残基的 CA，避免悬浮在主链之外。
         const sideLinks = [];
         [[b.a, pa, gp, b.betaA], [b.b, pb, gq, b.betaB]].forEach(([id, sulfur, parent, beta]) => {
           const chain = P.chains.find((c) => c.id === id[0]);
-          const idx = Number(id.slice(1)) - chain.first;
+          // 胰岛素 A、B 链的 PDB 残基编号均从 1 开始。
+          const idx = Number(id.slice(1)) - 1;
           if (idx >= 0 && beta) {
             const cb = new V3(...beta).sub(ctr);
-            sideLinks.push(MOL.cylBetween(parent, new V3(...chain.xyz[idx]).sub(ctr), cb, 0.12, SSCOL));
-            sideLinks.push(MOL.cylBetween(parent, cb, sulfur, 0.12, SSCOL));
+            const ca = new V3(...chain.xyz[idx]).sub(ctr);
+            sideLinks.push(MOL.addSphere(parent, 'C', ca, 0.34));
+            sideLinks.push(MOL.addSphere(parent, 'C', cb, 0.43));
+            sideLinks.push(MOL.cylBetween(parent, ca, cb, 0.15, MOL.CPK.C));
+            sideLinks.push(MOL.cylBetween(parent, cb, sulfur, 0.15, SSCOL));
+            // 半胱氨酸侧链的 —CH₂—：显式显示 β-碳上的两个氢。
+            [120, -120].forEach(angle => {
+              const h = MOL.placeAtom(sulfur, ca, cb, 1.09, 109.5, angle);
+              sideLinks.push(MOL.addSphere(parent, 'H', h, 0.24));
+              sideLinks.push(MOL.cylBetween(parent, cb, h, 0.075, MOL.CPK.H));
+            });
           }
         });
         const link = MOL.dynamicBond(bondG, sa, sb, inter ? 0.17 : 0.14, inter ? SSCOL : SSCOL2);
@@ -844,14 +855,18 @@
 
       const L = [];
       L.push(ctx.lab('<b>A 链</b>（21 个氨基酸）', centers[0].clone().add(new V3(-5, 7, 0)), 'c-orange'));
-      const labB = ctx.lab('<b>B 链</b>（30 个氨基酸）', centers[1].clone().add(new V3(0, -4.6, 0)), 'c-blue');
+      const labB = ctx.lab('<b>B 链</b>（30 个氨基酸）', centers[1].clone().add(new V3(7, -1, 0)), 'c-blue');
       L.push(labB);
       const ssLabels = [];
+      const leaders = [];
       info.forEach((b) => {
         const mid = b.pa.clone().add(b.pb).multiplyScalar(0.5);
         const t = '<b>' + (b.inter ? '链间' : '链内') + '二硫键</b> —S—S—<br><span class="s">' +
-          (b.inter ? '连接 A 链与 B 链' : '连接 A 链上的两个部位') + '</span>';
-        ssLabels.push(ctx.lab(t, mid, b.inter ? 'c-gold' : 'c-purple'));
+          (b.inter ? '连接 A 链与 B 链' : '连接 A 链上的两个部位') + '<br>侧链 —CH₂—S—S—CH₂—</span>';
+        b.labelOffset = new V3(b.inter ? 10 : -10, b.inter ? -4 : 5, 0);
+        const labelPos = mid.clone().add(b.labelOffset);
+        ssLabels.push(ctx.lab(t, labelPos, b.inter ? 'c-gold' : 'c-purple'));
+        leaders.push(MOL.dashedLine(g, mid, mid.clone().addScaledVector(b.labelOffset, 0.7), 0x9ba7b4));
       });
       L.push.apply(L, ssLabels);
       const labBreak = ctx.lab('<b>二硫键断裂</b><br><span class="s">两条链分开 → 空间结构破坏 → 功能丧失</span>',
@@ -868,7 +883,7 @@
           '<div class="kv"><span>肽链</span><b>2 条（A 链 21 + B 链 30）</b></div>' +
           '<div class="kv"><span>图中二硫键</span><b>' + (sep > 0 ? '0（已断裂）' : '2 个（链内 1 + 链间 1）') + '</b></div>' +
           '<div class="kv"><span>状态</span><b>' + (sep > 0 ? '<span style="color:#d0402c">空间结构破坏 · 功能丧失</span>' : '空间结构稳定 · 功能正常') + '</b></div>' +
-          '</div><div class="note">黄色球 = 硫原子（S）；黄色棒连接两个硫原子形成 —S—S—。图中仅显示两处示例，真实胰岛素共有 3 个二硫键。</div>');
+          '</div><div class="note">灰色球 = 侧链碳，白色球 = 氢，黄色球 = 硫（S）；两端侧链通过 —S—S— 相连。半透明管表示肽链主链。图中仅显示两处示例，真实胰岛素共有 3 个二硫键。</div>');
       }
       function apply(v) {
         sep = Math.min(1, Math.max(0, v));
@@ -883,13 +898,14 @@
           b.sa.visible = b.sb.visible = showSS;
           b.sideLinks.forEach(mesh => { mesh.visible = showSS; });
           ssLabels[i].show(showSS && sep === 0);
+          leaders[i].visible = showSS && sep === 0;
           ssLabels[i].pos.copy(b.pa).add(carts[b.gi].group.position)
             .add(b.pb).add(carts[b.gj].group.position).multiplyScalar(0.5)
-            .add(new V3(b.inter ? 5 : -5, b.inter ? -2 : 2, 0));
+            .add(b.labelOffset);
         });
         labBreak.show(sep > 0);
         L[0].pos.copy(centers[0]).add(new V3(-5, 7, 0)).add(carts[0].group.position);
-        labB.pos.copy(centers[1]).add(new V3(0, -4.6, 0)).add(carts[1].group.position);
+        labB.pos.copy(centers[1]).add(new V3(7, -1, 0)).add(carts[1].group.position);
         stat();
       }
       apply(0);

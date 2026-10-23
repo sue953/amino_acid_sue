@@ -41,6 +41,11 @@ const ss = build('disulfide');
 const sg = ss.ctx.root.children[0];
 const bonds = sg.children[2].children;
 assert.equal(bonds.length, 2);
+// Four cysteine sidechains each expose CA, CB and two hydrogen spheres.
+const sideSpheres = sg.children.slice(0, 2).flatMap(c => c.children)
+  .filter(o => o.isMesh && o.geometry.type === 'SphereGeometry');
+assert.equal(sideSpheres.length, 20);
+assert.ok(sideSpheres.every(o => Number.isFinite(o.position.x)));
 assert.equal(ss.labels.filter(l => l.text.includes('链内二硫键</b>')).length, 1);
 assert.equal(ss.labels.filter(l => l.text.includes('链间二硫键</b>')).length, 1);
 assert.ok(bonds.every(b => b.visible));

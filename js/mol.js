@@ -347,6 +347,8 @@
         if (!api.visible) { m.visible = false; return; }
         meshA.getWorldPosition(tmpA);
         meshB.getWorldPosition(tmpB);
+        // 场景切换或旋转后，键所在分组也必须使用最新的祖先变换。
+        parent.updateWorldMatrix(true, false);
         parent.worldToLocal(tmpA);
         parent.worldToLocal(tmpB);
         const dir = tmpB.clone().sub(tmpA);
